@@ -10,17 +10,14 @@ from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 
 
-# Get data
 ticker = yf.Ticker("GOOGL")
 data = ticker.history(period="1y", interval="1h")
 
-# Feature engineering
-data["Return"] = data["Close"].pct_change()  # daily returns
+data["Return"] = data["Close"].pct_change()
 data["MA5"] = data["Close"].rolling(5).mean()
 data["MA10"] = data["Close"].rolling(10).mean()
-data["Target"] = data["Close"].shift(-1)  # next day close
+data["Target"] = data["Close"].shift(-1)
 
-# Drop NA values from rolling windows
 data = data.dropna()
 print(data.head())
 
@@ -40,7 +37,6 @@ print("MSE:", mse)
 scaler = MinMaxScaler()
 scaled_data = scaler.fit_transform(data[["Close"]])
 
-# Prepare sequences
 X_seq, y_seq = [], []
 seq_length = 60  # 60 days
 for i in range(len(scaled_data) - seq_length):
@@ -49,12 +45,10 @@ for i in range(len(scaled_data) - seq_length):
 
 X_seq, y_seq = np.array(X_seq), np.array(y_seq)
 
-# Train/test split
 split = int(0.8 * len(X_seq))
 X_train, X_test = X_seq[:split], X_seq[split:]
 y_train, y_test = y_seq[:split], y_seq[split:]
 
-# Build model
 model = Sequential([
     LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)),
     Dropout(0.2),
@@ -65,11 +59,9 @@ model = Sequential([
 model.compile(optimizer="adam", loss="mse")
 model.fit(X_train, y_train, epochs=100, batch_size=32, validation_data=(X_test, y_test))
 
-# --- Scaling (double-check) ---
 scaler = MinMaxScaler(feature_range=(0,1))
 scaled = scaler.fit_transform(data[["Close"]])
 
-# Inverse-transform predictions correctly
 preds = model.predict(X_test)
 preds = scaler.inverse_transform(preds)
 actual = scaler.inverse_transform(y_test.reshape(-1,1))
