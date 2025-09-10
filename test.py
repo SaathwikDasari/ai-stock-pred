@@ -4,10 +4,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 import numpy as np
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
+import joblib
 
 
 ticker = yf.Ticker("TSLA")
@@ -21,24 +22,28 @@ data["Target"] = data["Close"].shift(-1)
 data = data.dropna()
 print(data.head())
 
+
 X = data[["Return", "MA5", "MA10"]]
 y = data["Target"]
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
-model = LinearRegression()
-model.fit(X_train, y_train)
+lin_model = LinearRegression()
+lin_model.fit(X_train, y_train)
 
-preds = model.predict(X_test)
+preds = lin_model.predict(X_test)
 mse = mean_squared_error(y_test, preds)
+print("Linear Regression MSE:", mse)
 
-print("MSE:", mse)
+# Save Linear Regression model (optional)
+joblib.dump(lin_model, "linear_model.pkl")
 
-scaler = MinMaxScaler()
+
+scaler = MinMaxScaler(feature_range=(0, 1))
 scaled_data = scaler.fit_transform(data[["Close"]])
 
 X_seq, y_seq = [], []
-seq_length = 60  # 60 days
+seq_length = 60  # 60 timesteps
 for i in range(len(scaled_data) - seq_length):
     X_seq.append(scaled_data[i:i+seq_length])
     y_seq.append(scaled_data[i+seq_length])
@@ -49,59 +54,68 @@ split = int(0.8 * len(X_seq))
 X_train, X_test = X_seq[:split], X_seq[split:]
 y_train, y_test = y_seq[:split], y_seq[split:]
 
-model = Sequential([
+lstm_model = Sequential([
     LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)),
     Dropout(0.2),
     LSTM(50),
     Dense(1)
 ])
 
-model.compile(optimizer="adam", loss="mse")
-model.fit(X_train, y_train, epochs=2000 , batch_size=32, validation_data=(X_test, y_test))
+lstm_model.compile(optimizer="adam", loss="mse")
+lstm_model.fit(X_train, y_train, epochs=100, batch_size=32, validation_data=(X_test, y_test)) 
 
-scaler = MinMaxScaler(feature_range=(0,1))
-scaled = scaler.fit_transform(data[["Close"]])
 
-preds = model.predict(X_test)
+lstm_model.save("lstm_model.keras")
+joblib.dump(scaler, "scaler.pkl")
+print("LSTM model saved as lstm_model.keras")
+print("Scaler saved as scaler.pkl")
+
+
+preds = lstm_model.predict(X_test)
 preds = scaler.inverse_transform(preds)
-actual = scaler.inverse_transform(y_test.reshape(-1,1))
-
-
-
+actual = scaler.inverse_transform(y_test.reshape(-1, 1))
 
 rmse = np.sqrt(mean_squared_error(actual, preds))
-print("RMSE:", rmse)
+print("LSTM RMSE:", rmse)
 
-plt.figure(figsize=(12,6))
+plt.figure(figsize=(12, 6))
 plt.plot(actual, color="black", label="Actual Price")
 plt.plot(preds, color="green", label="Predicted Price")
 plt.legend()
 plt.show()
 
-last_window = scaled[-60:]  # last 60 days of scaled data
+
+last_window = scaled_data[-60:] 
 last_window = np.reshape(last_window, (1, 60, 1))
-next_pred = model.predict(last_window)
+next_pred = lstm_model.predict(last_window)
 next_price = scaler.inverse_transform(next_pred)[0][0]
 print("Next predicted price:", next_price)
-future_days = 30  # predict 30 days into the future
-future_preds = []
 
-window = scaled[-60:].tolist()  # start with last 60 values
+future_days = 30
+future_preds = []
+window = scaled_data[-60:].tolist()
 
 for _ in range(future_days):
     X_input = np.array(window[-60:]).reshape(1, 60, 1)
-    pred = model.predict(X_input, verbose=0)
-
-    # append prediction
+    pred = lstm_model.predict(X_input, verbose=0)
     future_preds.append(pred[0][0])
-    window.append([pred[0][0]])  # add prediction back into sequence
+    window.append([pred[0][0]])
 
-# inverse transform
 future_preds = scaler.inverse_transform(np.array(future_preds).reshape(-1, 1))
 
-plt.figure(figsize=(12,6))
-plt.plot(data.index, data["Close"], label="Historical Price")
-plt.plot(pd.date_range(data.index[-1], periods=future_days+1, freq="B")[1:],
-         future_preds, label="Future Prediction", color="red")
-plt.legend()
-plt.show()
+# plt.figure(figsize=(12, 6))
+# plt.plot(data.index, data["Close"], label="Historical Price")
+# plt.plot(pd.date_range(data.index[-1], periods=future_days+1, freq="B")[1:],
+#          future_preds, label="Future Prediction", color="red")
+# plt.legend()
+# plt.show()
+
+# print(lin_model.predict(5))
+
+lin_model = joblib.load('linear_model.pkl')
+ltsm_model = load_model('lstm_model.keras')
+scaler = joblib.load("scaler.pkl")
+
+sample_features = [[0.01, 250.5, 252.1]]  
+lin_pred = lin_model.predict(sample_features)
+print("Linear Regression Prediction:", lin_pred[0])
