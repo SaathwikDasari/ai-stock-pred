@@ -1,5 +1,6 @@
 import yfinance as yf
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -13,6 +14,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 app = Flask(__name__)
+CORS(app)
 
 items = []
 
@@ -162,7 +164,7 @@ class LSTMStockPredictor:
         print(f"Mean Absolute Error (MAE): {mae:.4f}")
         print(f"R² Score:                  {r2:.4f}")
         
-        self.evaluation_results = {
+        self.evaluatiton_results = {
             'mse': mse,
             'rmse': rmse,
             'mae': mae,

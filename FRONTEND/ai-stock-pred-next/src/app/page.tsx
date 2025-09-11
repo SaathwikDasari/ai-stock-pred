@@ -27,6 +27,17 @@ export default function StockPredictor() {
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [error, setError] = useState('');
 
+  const fetchStockData = async () => {
+  const response = await fetch('http://localhost:5000/api/receive_data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker }),
+  });
+  const data = await response.json();
+  console.log(data);
+  return data;
+  }
+
   const handlePredict = async () => {
     if (!ticker.trim()) {
       setError('Please enter a stock ticker');
@@ -38,12 +49,12 @@ export default function StockPredictor() {
     setPrediction(null);
 
     try {
-      const response = await fetch('/api/predict', {
+      const response = await fetch('http://localhost:5000/api/receive_data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ticker: ticker.toUpperCase() }),
+        body: JSON.stringify({ "ticker": ticker.toUpperCase() }),
       });
 
       if (!response.ok) {
@@ -51,7 +62,8 @@ export default function StockPredictor() {
       }
 
       const result = await response.json();
-      setPrediction(result);
+      console.log(result)
+      console.log(setPrediction(result));
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate prediction');
@@ -97,7 +109,7 @@ export default function StockPredictor() {
             </div>
             
             <button
-              onClick={handlePredict}
+              onClick={fetchStockData}
               disabled={loading}
               className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
