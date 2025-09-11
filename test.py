@@ -35,7 +35,6 @@ preds = lin_model.predict(X_test)
 mse = mean_squared_error(y_test, preds)
 print("Linear Regression MSE:", mse)
 
-# Save Linear Regression model (optional)
 joblib.dump(lin_model, "linear_model.pkl")
 
 

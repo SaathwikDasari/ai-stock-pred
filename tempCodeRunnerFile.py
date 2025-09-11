@@ -1,2 +1,3 @@
-ass = [[0.01, 250.5, 252.1]]
-lin_model.predict(ass)
+
+    # predictor = run_stock_prediction('AAPL', '2y')
+    # predictor = run_stock_prediction('GOOGL', '5y')
