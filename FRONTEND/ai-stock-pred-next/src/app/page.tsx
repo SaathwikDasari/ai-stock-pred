@@ -1,4 +1,3 @@
-// src/app/page.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -27,18 +26,104 @@ export default function StockPredictor() {
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [error, setError] = useState('');
 
-  const fetchStockData = async () => {
-  const response = await fetch('http://localhost:5000/api/receive_data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ticker }),
-  });
-  const data = await response.json();
-  console.log(data);
-  return data;
-  }
+  // Mock data generator for demonstration
+  const generateMockData = (ticker: string): PredictionResult => {
+    const basePrice = Math.random() * 200 + 50; // Random price between $50-$250
+    const dates = [];
+    const data: StockData[] = [];
+    
+    // Generate historical data (last 30 days)
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+    
+    // Generate future dates (next 10 days)
+    for (let i = 1; i <= 10; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() + i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+    
+    // Generate price data with some volatility
+    let currentPrice = basePrice;
+    dates.forEach((date, index) => {
+      const volatility = (Math.random() - 0.5) * 10; // Random change between -$5 to +$5
+      currentPrice = Math.max(currentPrice + volatility, 10); // Ensure price doesn't go below $10
+      
+      data.push({
+        date: date,
+        price: Number(currentPrice.toFixed(2)),
+        type: index < 30 ? 'historical' : 'predicted'
+      });
+    });
 
-  const handlePredict = async () => {
+    const trends = ['bullish', 'bearish', 'neutral'] as const;
+    const randomTrend = trends[Math.floor(Math.random() * trends.length)];
+    
+    return {
+      ticker: ticker.toUpperCase(),
+      data,
+      prediction: {
+        trend: randomTrend,
+        confidence: Math.random() * 0.4 + 0.6, // 60-100% confidence
+        reasoning: `Based on technical analysis and market sentiment, ${ticker.toUpperCase()} shows ${randomTrend} indicators. Key factors include recent trading volume, moving averages, and sector performance trends.`
+      }
+    };
+  };
+
+  const transformApiData = (apiResponse: any): PredictionResult => {
+    console.log('Raw API Response:', apiResponse);
+    
+    const { data } = apiResponse;
+    const { historical_prices, predicted_prices, ticker } = data;
+    
+    // Combine historical and predicted data
+    const combinedData: StockData[] = [
+      ...historical_prices.map((item: any) => ({
+        date: item.date,
+        price: Number(item.price),
+        type: 'historical' as const
+      })),
+      ...predicted_prices.map((item: any) => ({
+        date: item.date,
+        price: Number(item.price),
+        type: 'predicted' as const
+      }))
+    ];
+
+    // Sort by date to ensure proper order
+    combinedData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Calculate trend based on last historical vs first predicted price
+    const lastHistorical = historical_prices[historical_prices.length - 1];
+    const firstPredicted = predicted_prices[0];
+    const priceDiff = firstPredicted.price - lastHistorical.price;
+    const percentChange = (priceDiff / lastHistorical.price) * 100;
+    
+    let trend: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+    if (percentChange > 1) trend = 'bullish';
+    else if (percentChange < -1) trend = 'bearish';
+    
+    // Calculate confidence based on price volatility
+    const confidence = Math.min(0.95, Math.max(0.65, 0.8 - Math.abs(percentChange) * 0.01));
+
+    const result: PredictionResult = {
+      ticker: ticker,
+      data: combinedData,
+      prediction: {
+        trend,
+        confidence,
+        reasoning: `Analysis of ${ticker} shows a ${trend} trend with ${percentChange > 0 ? 'an increase' : 'a decrease'} of ${Math.abs(percentChange).toFixed(2)}% expected over the next ${predicted_prices.length} trading days based on ${historical_prices.length} days of historical data.`
+      }
+    };
+
+    console.log('Transformed Data:', result);
+    return result;
+  };
+
+  const fetchStockData = async () => {
     if (!ticker.trim()) {
       setError('Please enter a stock ticker');
       return;
@@ -49,27 +134,41 @@ export default function StockPredictor() {
     setPrediction(null);
 
     try {
-      const response = await fetch('http://localhost:5000/api/receive_data', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ "ticker": ticker.toUpperCase() }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch prediction');
+      // Try to fetch from your API first
+      try {
+        const response = await fetch('http://localhost:5000/api/receive_data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticker: ticker.toUpperCase() }),
+        });
+        
+        if (response.ok) {
+          const apiData = await response.json();
+          console.log('API Response received:', apiData);
+          
+          // Transform the API data to match our component structure
+          const transformedData = transformApiData(apiData);
+          setPrediction(transformedData);
+          return;
+        }
+      } catch (apiError) {
+        console.log('API not available, using mock data');
       }
-
-      const result = await response.json();
-      console.log(result)
-      console.log(setPrediction(result));
-
+      
+      // If API fails, use mock data for demonstration
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API delay
+      const mockData = generateMockData(ticker);
+      setPrediction(mockData);
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate prediction');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePredict = async () => {
+    await fetchStockData();
   };
 
   const formatPrice = (price: number) => `$${price.toFixed(2)}`;
@@ -82,6 +181,10 @@ export default function StockPredictor() {
     }
   };
 
+  const getLineColor = (dataPoint: StockData) => {
+    return dataPoint.type === 'predicted' ? '#A855F7' : '#8B5CF6';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="container mx-auto px-4 py-8">
@@ -91,6 +194,7 @@ export default function StockPredictor() {
             <TrendingUp className="text-purple-400" size={40} />
             <h1 className="text-4xl font-bold text-white">AI Stock Predictor</h1>
           </div>
+          <p className="text-gray-300">Get AI-powered stock price predictions with interactive charts</p>
         </div>
 
         {/* Input Section */}
@@ -109,7 +213,7 @@ export default function StockPredictor() {
             </div>
             
             <button
-              onClick={fetchStockData}
+              onClick={handlePredict}
               disabled={loading}
               className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
@@ -125,6 +229,10 @@ export default function StockPredictor() {
                 </>
               )}
             </button>
+            
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              Note: If API is unavailable, demo data will be shown
+            </p>
           </div>
         </div>
 
@@ -160,7 +268,7 @@ export default function StockPredictor() {
                 <div className="text-center">
                   <p className="text-gray-300 mb-1">Current Price</p>
                   <p className="text-xl font-bold text-white">
-                    {formatPrice(prediction.data.find(d => d.type === 'historical')?.price || 0)}
+                    {formatPrice(prediction.data.filter(d => d.type === 'historical').slice(-1)[0]?.price || 0)}
                   </p>
                 </div>
               </div>
@@ -197,15 +305,31 @@ export default function StockPredictor() {
                         borderRadius: '8px',
                         color: '#F3F4F6'
                       }}
-                      formatter={(value: number) => [formatPrice(value), 'Price']}
+                      formatter={(value: number, name: string, props: any) => [
+                        formatPrice(value), 
+                        props.payload.type === 'predicted' ? 'Predicted Price' : 'Historical Price'
+                      ]}
+                      labelFormatter={(date: string) => `Date: ${date}`}
                     />
                     <Legend />
                     <Line 
                       type="monotone" 
                       dataKey="price" 
                       stroke="#8B5CF6"
-                      strokeWidth={3}
-                      dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }}
+                      strokeWidth={2}
+                      dot={(props: any) => {
+                        const { payload } = props;
+                        return (
+                          <circle
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={3}
+                            fill={payload.type === 'predicted' ? '#A855F7' : '#8B5CF6'}
+                            strokeWidth={2}
+                            stroke={payload.type === 'predicted' ? '#A855F7' : '#8B5CF6'}
+                          />
+                        );
+                      }}
                       activeDot={{ r: 6, fill: '#A855F7' }}
                     />
                   </LineChart>
@@ -213,11 +337,11 @@ export default function StockPredictor() {
               </div>
               <div className="mt-4 flex items-center justify-center gap-8 text-sm">
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-blue-500 rounded"></div>
+                  <div className="w-4 h-4 bg-purple-500 rounded"></div>
                   <span className="text-gray-300">Historical Data</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-purple-500 rounded"></div>
+                  <div className="w-4 h-4 bg-purple-400 rounded"></div>
                   <span className="text-gray-300">AI Predictions</span>
                 </div>
               </div>
@@ -228,4 +352,3 @@ export default function StockPredictor() {
     </div>
   );
 }
-

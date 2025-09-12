@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: stock-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    networks:
+      - stocknet
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    container_name: stock-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./FRONTEND/ai-stock-pred-next:/app
+    depends_on:
+      - backend
+    networks:
+      - stocknet
+
+networks:
+  stocknet:
+    driver: bridge
