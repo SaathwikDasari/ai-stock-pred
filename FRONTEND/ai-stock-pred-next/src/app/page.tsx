@@ -26,60 +26,10 @@ export default function StockPredictor() {
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [error, setError] = useState('');
 
-  // Mock data generator for demonstration
-  const generateMockData = (ticker: string): PredictionResult => {
-    const basePrice = Math.random() * 200 + 50; // Random price between $50-$250
-    const dates = [];
-    const data: StockData[] = [];
-    
-    // Generate historical data (last 30 days)
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      dates.push(date.toISOString().split('T')[0]);
-    }
-    
-    // Generate future dates (next 10 days)
-    for (let i = 1; i <= 10; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() + i);
-      dates.push(date.toISOString().split('T')[0]);
-    }
-    
-    // Generate price data with some volatility
-    let currentPrice = basePrice;
-    dates.forEach((date, index) => {
-      const volatility = (Math.random() - 0.5) * 10; // Random change between -$5 to +$5
-      currentPrice = Math.max(currentPrice + volatility, 10); // Ensure price doesn't go below $10
-      
-      data.push({
-        date: date,
-        price: Number(currentPrice.toFixed(2)),
-        type: index < 30 ? 'historical' : 'predicted'
-      });
-    });
-
-    const trends = ['bullish', 'bearish', 'neutral'] as const;
-    const randomTrend = trends[Math.floor(Math.random() * trends.length)];
-    
-    return {
-      ticker: ticker.toUpperCase(),
-      data,
-      prediction: {
-        trend: randomTrend,
-        confidence: Math.random() * 0.4 + 0.6, // 60-100% confidence
-        reasoning: `Based on technical analysis and market sentiment, ${ticker.toUpperCase()} shows ${randomTrend} indicators. Key factors include recent trading volume, moving averages, and sector performance trends.`
-      }
-    };
-  };
-
   const transformApiData = (apiResponse: any): PredictionResult => {
-    console.log('Raw API Response:', apiResponse);
-    
     const { data } = apiResponse;
     const { historical_prices, predicted_prices, ticker } = data;
     
-    // Combine historical and predicted data
     const combinedData: StockData[] = [
       ...historical_prices.map((item: any) => ({
         date: item.date,
@@ -93,10 +43,8 @@ export default function StockPredictor() {
       }))
     ];
 
-    // Sort by date to ensure proper order
     combinedData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // Calculate trend based on last historical vs first predicted price
     const lastHistorical = historical_prices[historical_prices.length - 1];
     const firstPredicted = predicted_prices[0];
     const priceDiff = firstPredicted.price - lastHistorical.price;
@@ -106,7 +54,6 @@ export default function StockPredictor() {
     if (percentChange > 1) trend = 'bullish';
     else if (percentChange < -1) trend = 'bearish';
     
-    // Calculate confidence based on price volatility
     const confidence = Math.min(0.95, Math.max(0.65, 0.8 - Math.abs(percentChange) * 0.01));
 
     const result: PredictionResult = {
@@ -119,7 +66,6 @@ export default function StockPredictor() {
       }
     };
 
-    console.log('Transformed Data:', result);
     return result;
   };
 
@@ -134,34 +80,30 @@ export default function StockPredictor() {
     setPrediction(null);
 
     try {
-      // Try to fetch from your API first
-      try {
-        const response = await fetch('http://localhost:5000/api/receive_data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ticker: ticker.toUpperCase() }),
-        });
-        
-        if (response.ok) {
-          const apiData = await response.json();
-          console.log('API Response received:', apiData);
-          
-          // Transform the API data to match our component structure
-          const transformedData = transformApiData(apiData);
-          setPrediction(transformedData);
-          return;
-        }
-      } catch (apiError) {
-        console.log('API not available, using mock data');
+      const response = await fetch('http://localhost:5000/api/receive_data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker.toUpperCase() }),
+      });
+      
+      if (response.ok) {
+        const apiData = await response.json();
+        const transformedData = transformApiData(apiData);
+        setPrediction(transformedData);
+      } else {
+        throw new Error(`API Error: ${response.status} - ${response.statusText}`);
       }
       
-      // If API fails, use mock data for demonstration
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API delay
-      const mockData = generateMockData(ticker);
-      setPrediction(mockData);
-      
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate prediction');
+      if (err instanceof Error) {
+        if (err.message.includes('fetch')) {
+          setError('Unable to connect to the prediction API. Please ensure the server is running on localhost:5000.');
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('An unexpected error occurred while fetching stock data.');
+      }
     } finally {
       setLoading(false);
     }
@@ -181,14 +123,9 @@ export default function StockPredictor() {
     }
   };
 
-  const getLineColor = (dataPoint: StockData) => {
-    return dataPoint.type === 'predicted' ? '#A855F7' : '#8B5CF6';
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <TrendingUp className="text-purple-400" size={40} />
@@ -197,7 +134,6 @@ export default function StockPredictor() {
           <p className="text-gray-300">Get AI-powered stock price predictions with interactive charts</p>
         </div>
 
-        {/* Input Section */}
         <div className="max-w-md mx-auto mb-8">
           <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
             <div className="mb-4">
@@ -229,14 +165,9 @@ export default function StockPredictor() {
                 </>
               )}
             </button>
-            
-            <p className="text-xs text-gray-400 mt-2 text-center">
-              Note: If API is unavailable, demo data will be shown
-            </p>
           </div>
         </div>
 
-        {/* Error Display */}
         {error && (
           <div className="max-w-2xl mx-auto mb-8">
             <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-4 flex items-center gap-3">
@@ -246,10 +177,8 @@ export default function StockPredictor() {
           </div>
         )}
 
-        {/* Results */}
         {prediction && (
           <div className="max-w-6xl mx-auto">
-            {/* Prediction Summary */}
             <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 mb-8">
               <h2 className="text-2xl font-bold text-white mb-4">{prediction.ticker} Analysis</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -273,14 +202,12 @@ export default function StockPredictor() {
                 </div>
               </div>
               
-              {/* AI Reasoning */}
               <div className="mt-6 p-4 bg-white/5 rounded-lg">
                 <h3 className="text-lg font-semibold text-white mb-2">AI Analysis</h3>
                 <p className="text-gray-300">{prediction.prediction.reasoning}</p>
               </div>
             </div>
 
-            {/* Chart */}
             <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
               <h3 className="text-xl font-bold text-white mb-6">Price Prediction Chart</h3>
               <div className="h-96">
